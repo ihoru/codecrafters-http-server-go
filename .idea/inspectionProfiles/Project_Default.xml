@@ -1,0 +1,79 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="CustomRegExpInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="myConfigurations">
+        <list>
+          <RegExpInspectionConfiguration>
+            <option name="name" value="@settings.PRINT_SQL" />
+            <option name="uuid" value="b48d6197-1823-331c-9a22-ceacb19c389f" />
+            <option name="patterns">
+              <list>
+                <InspectionPattern>
+                  <option name="regExp" value="\b@settings\.PRINT_SQL\b" />
+                  <option name="_fileType" value="Python" />
+                  <option name="searchContext" value="EXCEPT_COMMENTS_AND_STRING_LITERALS" />
+                </InspectionPattern>
+              </list>
+            </option>
+          </RegExpInspectionConfiguration>
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="DjangoUnresolvedFilterInspection" enabled="true" level="INFORMATION" enabled_by_default="true" />
+    <inspection_tool class="Eslint" enabled="true" level="INFORMATION" enabled_by_default="true" />
+    <inspection_tool class="HtmlFormInputWithoutLabel" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="HtmlRequiredAltAttribute" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="HtmlUnknownAttribute" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="myValues">
+        <value>
+          <list size="7">
+            <item index="0" class="java.lang.String" itemvalue="ng-if" />
+            <item index="1" class="java.lang.String" itemvalue="ng-show" />
+            <item index="2" class="java.lang.String" itemvalue="ng-bind" />
+            <item index="3" class="java.lang.String" itemvalue="ng-src" />
+            <item index="4" class="java.lang.String" itemvalue="ng-class" />
+            <item index="5" class="java.lang.String" itemvalue="ng-click" />
+            <item index="6" class="java.lang.String" itemvalue="ng-repeat" />
+          </list>
+        </value>
+      </option>
+      <option name="myCustomValuesEnabled" value="true" />
+    </inspection_tool>
+    <inspection_tool class="HttpUrlsUsage" enabled="true" level="INFORMATION" enabled_by_default="true" />
+    <inspection_tool class="IdentifierGrammar" enabled="true" level="TYPO" enabled_by_default="true" />
+    <inspection_tool class="JSUnusedLocalSymbols" enabled="true" level="INFORMATION" enabled_by_default="true" editorAttributes="INFORMATION_ATTRIBUTES">
+      <option name="myIgnoreParametersBeforeUsed" value="false" />
+    </inspection_tool>
+    <inspection_tool class="PyDocstringTypesInspection" enabled="true" level="WARNING" enabled_by_default="true" editorAttributes="WARNING_ATTRIBUTES" />
+    <inspection_tool class="PyMethodMayBeStaticInspection" enabled="true" level="INFORMATION" enabled_by_default="true" editorAttributes="INFORMATION_ATTRIBUTES" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <value>
+          <list size="2">
+            <item index="0" class="java.lang.String" itemvalue="social-core" />
+            <item index="1" class="java.lang.String" itemvalue="django-filter" />
+          </list>
+        </value>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyPep8Inspection" enabled="true" level="WEAK WARNING" enabled_by_default="true">
+      <option name="ignoredErrors">
+        <list>
+          <option value="E501" />
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyUnresolvedReferencesInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredIdentifiers">
+        <list>
+          <option value="fastapi.applications.FastAPI.*" />
+          <option value="ic" />
+          <option value="requests.PreparedRequest._uuid" />
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyUnusedLocalInspection" enabled="true" level="INFORMATION" enabled_by_default="true" editorAttributes="WARNING_ATTRIBUTES" />
+    <inspection_tool class="b48d6197-1823-331c-9a22-ceacb19c389f" enabled="true" level="ERROR" enabled_by_default="true" editorAttributes="ERRORS_ATTRIBUTES" />
+  </profile>
+</component>
