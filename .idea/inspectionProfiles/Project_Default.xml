@@ -22,6 +22,7 @@
     </inspection_tool>
     <inspection_tool class="DjangoUnresolvedFilterInspection" enabled="true" level="INFORMATION" enabled_by_default="true" />
     <inspection_tool class="Eslint" enabled="true" level="INFORMATION" enabled_by_default="true" />
+    <inspection_tool class="GoUnhandledErrorResult" enabled="true" level="INFORMATION" enabled_by_default="true" />
     <inspection_tool class="HtmlFormInputWithoutLabel" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="HtmlRequiredAltAttribute" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="HtmlUnknownAttribute" enabled="true" level="WARNING" enabled_by_default="true">
