@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -34,6 +35,7 @@ func handleConnection(conn net.Conn) {
 
 	fmt.Println("Accepted connection from:", conn.RemoteAddr())
 
+	var requestTarget string
 	reader := bufio.NewReader(conn)
 	// Read until we get the empty line that marks end of headers
 	for {
@@ -50,15 +52,35 @@ func handleConnection(conn net.Conn) {
 			break
 		}
 		line = line[:len(line)-1] // Remove trailing newline
-		fmt.Println("Received header:", line)
+		if requestTarget == "" {
+			requestTarget = line
+		} else {
+			//fmt.Println("Received header:", line)
+		}
 	}
 
-	response := "HTTP/1.1 200 OK\r\n\r\n"
-	_, err := conn.Write([]byte(response))
+	parts := strings.Split(strings.TrimSpace(requestTarget), " ")
+	if len(parts) != 3 {
+		fmt.Println("Invalid HTTP request format")
+		return
+	}
+	fmt.Println("requestTarget:", requestTarget)
+
+	method := parts[0]
+	path := parts[1]
+	httpVersion := parts[2]
+
+	var response string
+	if method == "GET" && path == "/" && httpVersion == "HTTP/1.1" {
+		response = "HTTP/1.1 200 OK"
+	} else {
+		response = "HTTP/1.1 404 Not Found"
+	}
+	_, err := conn.Write([]byte(response + "\r\n\r\n"))
 	if err != nil {
 		fmt.Println("Error sending response:", err)
 		return
 	}
 
-	fmt.Println("Response sent successfully")
+	fmt.Println("Response sent successfully:", response)
 }
