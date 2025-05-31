@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"net"
 	"os"
 )
@@ -23,7 +25,7 @@ func main() {
 			continue
 		}
 
-		go handleConnection(conn)
+		handleConnection(conn)
 	}
 }
 
@@ -32,12 +34,24 @@ func handleConnection(conn net.Conn) {
 
 	fmt.Println("Accepted connection from:", conn.RemoteAddr())
 
-	//buf := make([]byte, 1024)
-	//n, err := conn.Read(buf)
-	//if err != nil {
-	//	fmt.Println("Error reading request:", err)
-	//	return
-	//}
+	reader := bufio.NewReader(conn)
+	// Read until we get the empty line that marks end of headers
+	for {
+		line, err := reader.ReadString('\n')
+		if err == io.EOF {
+			fmt.Println("Connection closed by client")
+			return
+		}
+		if err != nil {
+			fmt.Println("Error reading:", err)
+			return
+		}
+		if line == "\r\n" || line == "\n" { // End of headers
+			break
+		}
+		line = line[:len(line)-1] // Remove trailing newline
+		fmt.Println("Received header:", line)
+	}
 
 	response := "HTTP/1.1 200 OK\r\n\r\n"
 	_, err := conn.Write([]byte(response))
