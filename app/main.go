@@ -38,6 +38,7 @@ func handleConnection(conn net.Conn) {
 
 	var requestTarget string
 	reader := bufio.NewReader(conn)
+	requestHeaders := make(map[string]string)
 	// Read until we get the empty line that marks end of headers
 	for {
 		line, err := reader.ReadString('\n')
@@ -56,7 +57,14 @@ func handleConnection(conn net.Conn) {
 		if requestTarget == "" {
 			requestTarget = line
 		} else {
-			//fmt.Println("Received header:", line)
+			pair := strings.SplitN(line, ":", 2)
+			if len(pair) == 2 {
+				key := strings.ToLower(strings.TrimSpace(pair[0]))
+				value := strings.TrimSpace(pair[1])
+				requestHeaders[key] = value
+			} else {
+				fmt.Println("Invalid header format:", line)
+			}
 		}
 	}
 
@@ -82,6 +90,8 @@ func handleConnection(conn net.Conn) {
 	} else {
 		statusLine = "HTTP/1.1 200 OK"
 		if path == "/" {
+		} else if path == "/user-agent" {
+			body = requestHeaders["user-agent"]
 		} else if after, found := strings.CutPrefix(path, "/echo/"); found {
 			statusLine = "HTTP/1.1 200 OK"
 			body = after
