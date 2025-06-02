@@ -53,6 +53,8 @@ func handleConnection(conn net.Conn, directory string) {
 	var requestTarget string
 	reader := bufio.NewReader(conn)
 	requestHeaders := make(map[string]string)
+	var requestBody []byte
+
 	// Read until we get the empty line that marks end of headers
 	for {
 		line, err := reader.ReadString('\n')
@@ -82,6 +84,16 @@ func handleConnection(conn net.Conn, directory string) {
 		}
 	}
 
+	// Read request body if Content-Length header is present
+	if contentLength, err := strconv.Atoi(requestHeaders["content-length"]); err == nil && contentLength > 0 {
+		requestBody = make([]byte, contentLength)
+		_, err = io.ReadFull(reader, requestBody)
+		if err != nil {
+			fmt.Println("Error reading request body:", err)
+			return
+		}
+	}
+
 	parts := strings.Split(strings.TrimSpace(requestTarget), " ")
 	if len(parts) != 3 {
 		fmt.Println("Invalid HTTP request format")
@@ -99,41 +111,72 @@ func handleConnection(conn net.Conn, directory string) {
 	if httpVersion != "HTTP/1.1" {
 		statusLine = "HTTP/1.1 426 Upgrade Required"
 		headers["Upgrade"] = "HTTP/1.1"
-	} else if method != "GET" {
+	} else if method != "GET" && method != "POST" {
 		statusLine = "HTTP/1.1 405 Not Allowed"
 	} else {
 		statusLine = "HTTP/1.1 200 OK"
-		if path == "/" {
+		if method == "GET" && path == "/" {
 			// pass
-		} else if path == "/user-agent" {
+		} else if method == "GET" && path == "/user-agent" {
 			body = requestHeaders["user-agent"]
-		} else if after, found := strings.CutPrefix(path, "/echo/"); found {
+		} else if after, found := strings.CutPrefix(path, "/echo/"); found && method == "GET" {
 			statusLine = "HTTP/1.1 200 OK"
 			body = after
 		} else if directory != "" && strings.HasPrefix(path, "/files/") {
-			filePath := strings.TrimPrefix(path, "/files/")
-			fullPath := filepath.Join(directory, filePath)
-
-			fileInfo, err := os.Stat(fullPath)
-			if err != nil || fileInfo.IsDir() {
-				statusLine = "HTTP/1.1 404 Not Found"
+			filePath := filepath.Clean(strings.TrimPrefix(path, "/files/"))
+			if filePath == "" {
+				statusLine = "HTTP/1.1 400 Bad Request"
+				fmt.Println("Invalid file path:", filePath)
 			} else {
-				// Read the file content
-				file, err := os.Open(fullPath)
-				if err != nil {
-					statusLine = "HTTP/1.1 500 Internal Server Error"
-					fmt.Println("Error opening file:", err)
-				} else {
-					defer file.Close()
-					fileContent, err := io.ReadAll(file)
-					if err != nil {
+				fullPath := filepath.Join(directory, filePath)
+				if method == "POST" {
+					if requestBody == nil {
+						statusLine = "HTTP/1.1 400 Bad Request"
+						fmt.Println("No request body provided for POST method")
+					} else if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+						// Ensure the directory exists
 						statusLine = "HTTP/1.1 500 Internal Server Error"
-						fmt.Println("Error reading file:", err)
+						fmt.Println("Error creating directory:", err)
+					} else if _, err := os.Stat(fullPath); err == nil {
+						// Check if the file already exists
+						statusLine = "HTTP/1.1 409 Conflict"
+						fmt.Println("File already exists:", fullPath)
+					} else if !os.IsNotExist(err) {
+						statusLine = "HTTP/1.1 500 Internal Server Error"
+						fmt.Println("Error checking file existence:", err)
 					} else {
-						body = string(fileContent)
-						headers["Content-Type"] = "application/octet-stream"
-						headers["Content-Disposition"] = fmt.Sprintf("attachment; filename=%s", filepath.Base(fullPath))
-						headers["Content-Length"] = strconv.Itoa(len(fileContent))
+						// Create a new file with the content from the request body
+						err := os.WriteFile(fullPath, requestBody, 0644)
+						if err != nil {
+							statusLine = "HTTP/1.1 500 Internal Server Error"
+							fmt.Println("Error creating file:", err)
+						} else {
+							statusLine = "HTTP/1.1 201 Created"
+						}
+					}
+				} else { // GET method
+					fileInfo, err := os.Stat(fullPath)
+					if err != nil || fileInfo.IsDir() {
+						statusLine = "HTTP/1.1 404 Not Found"
+					} else {
+						// Read the file content
+						file, err := os.Open(fullPath)
+						if err != nil {
+							statusLine = "HTTP/1.1 500 Internal Server Error"
+							fmt.Println("Error opening file:", err)
+						} else {
+							defer file.Close()
+							fileContent, err := io.ReadAll(file)
+							if err != nil {
+								statusLine = "HTTP/1.1 500 Internal Server Error"
+								fmt.Println("Error reading file:", err)
+							} else {
+								body = string(fileContent)
+								headers["Content-Type"] = "application/octet-stream"
+								headers["Content-Disposition"] = fmt.Sprintf("attachment; filename=%s", filepath.Base(fullPath))
+								headers["Content-Length"] = strconv.Itoa(len(fileContent))
+							}
+						}
 					}
 				}
 			}
