@@ -6,12 +6,29 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
 
 func main() {
+	directory := "/tmp" // Default directory
+
+	// Check for --directory flag
+	for i := 1; i < len(os.Args); i++ {
+		if os.Args[i] == "--directory" && i+1 < len(os.Args) {
+			directory = os.Args[i+1]
+			i++ // Skip the next argument as we've already processed it
+		}
+	}
+
+	if directory == "" {
+		fmt.Fprintf(os.Stderr, "Empty directory is not allowed!\n")
+		os.Exit(1)
+	}
+
 	fmt.Println("Starting HTTP server on port 4221")
+	fmt.Println("Directory:", directory)
 
 	listener, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
@@ -27,11 +44,11 @@ func main() {
 			continue
 		}
 
-		go handleConnection(conn)
+		go handleConnection(conn, directory)
 	}
 }
 
-func handleConnection(conn net.Conn) {
+func handleConnection(conn net.Conn, directory string) {
 	defer conn.Close()
 
 	fmt.Println("Accepted connection from:", conn.RemoteAddr())
@@ -95,6 +112,32 @@ func handleConnection(conn net.Conn) {
 		} else if after, found := strings.CutPrefix(path, "/echo/"); found {
 			statusLine = "HTTP/1.1 200 OK"
 			body = after
+		} else if filename, found := strings.CutPrefix(path, "/files/"); found {
+			fullPath := filepath.Join(directory, filename)
+
+			fileInfo, err := os.Stat(fullPath)
+			if err != nil || fileInfo.IsDir() {
+				statusLine = "HTTP/1.1 404 Not Found"
+			} else {
+				// Read the file content
+				file, err := os.Open(fullPath)
+				if err != nil {
+					statusLine = "HTTP/1.1 500 Internal Server Error"
+					fmt.Println("Error opening file:", err)
+				} else {
+					defer file.Close()
+					fileContent, err := io.ReadAll(file)
+					if err != nil {
+						statusLine = "HTTP/1.1 500 Internal Server Error"
+						fmt.Println("Error reading file:", err)
+					} else {
+						body = string(fileContent)
+						headers["Content-Type"] = "application/octet-stream"
+						headers["Content-Disposition"] = fmt.Sprintf("attachment; filename=%s", filepath.Base(fullPath))
+						headers["Content-Length"] = strconv.Itoa(len(fileContent))
+					}
+				}
+			}
 		} else {
 			statusLine = "HTTP/1.1 404 Not Found"
 		}
