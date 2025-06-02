@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	directory := "/tmp" // Default directory
+	var directory string
 
 	// Check for --directory flag
 	for i := 1; i < len(os.Args); i++ {
@@ -22,13 +22,10 @@ func main() {
 		}
 	}
 
-	if directory == "" {
-		fmt.Fprintf(os.Stderr, "Empty directory is not allowed!\n")
-		os.Exit(1)
-	}
-
 	fmt.Println("Starting HTTP server on port 4221")
-	fmt.Println("Directory:", directory)
+	if directory != "" {
+		fmt.Println("Directory:", directory)
+	}
 
 	listener, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
@@ -107,13 +104,15 @@ func handleConnection(conn net.Conn, directory string) {
 	} else {
 		statusLine = "HTTP/1.1 200 OK"
 		if path == "/" {
+			// pass
 		} else if path == "/user-agent" {
 			body = requestHeaders["user-agent"]
 		} else if after, found := strings.CutPrefix(path, "/echo/"); found {
 			statusLine = "HTTP/1.1 200 OK"
 			body = after
-		} else if filename, found := strings.CutPrefix(path, "/files/"); found {
-			fullPath := filepath.Join(directory, filename)
+		} else if directory != "" && strings.HasPrefix(path, "/files/") {
+			filePath := strings.TrimPrefix(path, "/files/")
+			fullPath := filepath.Join(directory, filePath)
 
 			fileInfo, err := os.Stat(fullPath)
 			if err != nil || fileInfo.IsDir() {
