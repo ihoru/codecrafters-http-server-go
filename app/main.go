@@ -25,6 +25,21 @@ const (
 	StatusInternalServerError = "HTTP/1.1 500 Internal Server Error"
 )
 
+// Server represents an HTTP server
+type Server struct {
+	Directory string
+	Handler   Handler
+}
+
+// NewServer creates a new HTTP server
+func NewServer(directory string) *Server {
+	server := &Server{
+		Directory: directory,
+	}
+	server.Handler = server.createMiddlewareChain()
+	return server
+}
+
 // Request represents an HTTP request
 type Request struct {
 	Method      string
@@ -67,21 +82,16 @@ func Chain(middlewares ...Middleware) Middleware {
 	}
 }
 
-func main() {
-	directory := parseArgs()
-
-	fmt.Println("Starting HTTP server on port 4221")
-	if directory != "" {
-		fmt.Println("Directory:", directory)
+// Start starts the HTTP server on the specified port
+func (s *Server) Start(port string) error {
+	fmt.Println("Starting HTTP server on port", port)
+	if s.Directory != "" {
+		fmt.Println("Directory:", s.Directory)
 	}
 
-	// Create middleware chain
-	handler := createMiddlewareChain(directory)
-
-	listener, err := net.Listen("tcp", "0.0.0.0:4221")
+	listener, err := net.Listen("tcp", "0.0.0.0:"+port)
 	if err != nil {
-		fmt.Println("Failed to bind to port 4221", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to bind to port %s: %w", port, err)
 	}
 	defer listener.Close()
 
@@ -92,7 +102,21 @@ func main() {
 			continue
 		}
 
-		go handleConnection(conn, handler)
+		go s.handleConnection(conn)
+	}
+}
+
+func main() {
+	directory := parseArgs()
+
+	// Create server instance
+	server := NewServer(directory)
+
+	// Start the server
+	err := server.Start("4221")
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
 }
 
@@ -170,7 +194,7 @@ func compressionMiddleware(next Handler) Handler {
 }
 
 // routingMiddleware routes requests to appropriate handlers
-func routingMiddleware(directory string) Middleware {
+func (s *Server) routingMiddleware() Middleware {
 	return func(next Handler) Handler {
 		return HandlerFunc(func(req *Request) *Response {
 			// Route to appropriate handler
@@ -183,13 +207,13 @@ func routingMiddleware(directory string) Middleware {
 				}
 
 			case req.Method == "GET" && req.Path == "/user-agent":
-				return handleUserAgent(req)
+				return s.handleUserAgent(req)
 
 			case req.Method == "GET" && strings.HasPrefix(req.Path, "/echo/"):
-				return handleEcho(req)
+				return s.handleEcho(req)
 
 			case strings.HasPrefix(req.Path, "/files/"):
-				return handleFiles(req, directory)
+				return s.handleFiles(req)
 
 			default:
 				return next.Handle(req)
@@ -199,7 +223,7 @@ func routingMiddleware(directory string) Middleware {
 }
 
 // createMiddlewareChain creates the middleware chain for request handling
-func createMiddlewareChain(directory string) Handler {
+func (s *Server) createMiddlewareChain() Handler {
 	// Create base handler that returns 404 Not Found
 	notFoundHandler := HandlerFunc(func(req *Request) *Response {
 		return &Response{
@@ -213,7 +237,7 @@ func createMiddlewareChain(directory string) Handler {
 		httpVersionMiddleware,
 		methodValidationMiddleware,
 		compressionMiddleware,
-		routingMiddleware(directory),
+		s.routingMiddleware(),
 	)
 
 	// Apply middleware chain to base handler
@@ -236,7 +260,7 @@ func parseArgs() string {
 }
 
 // handleConnection handles a client connection
-func handleConnection(conn net.Conn, handler Handler) {
+func (s *Server) handleConnection(conn net.Conn) {
 	defer conn.Close()
 
 	fmt.Println("Accepted connection from:", conn.RemoteAddr())
@@ -249,7 +273,7 @@ func handleConnection(conn net.Conn, handler Handler) {
 
 	fmt.Println("Request:", request.Method, request.Path, request.HTTPVersion)
 
-	response := handler.Handle(request)
+	response := s.Handler.Handle(request)
 
 	err = sendResponse(conn, response)
 	if err != nil {
@@ -318,7 +342,7 @@ func parseRequest(conn net.Conn) (*Request, error) {
 }
 
 // handleUserAgent handles the /user-agent endpoint
-func handleUserAgent(req *Request) *Response {
+func (s *Server) handleUserAgent(req *Request) *Response {
 	return &Response{
 		StatusLine: StatusOK,
 		Headers:    make(map[string]string),
@@ -327,7 +351,7 @@ func handleUserAgent(req *Request) *Response {
 }
 
 // handleEcho handles the /echo/ endpoint
-func handleEcho(req *Request) *Response {
+func (s *Server) handleEcho(req *Request) *Response {
 	content := strings.TrimPrefix(req.Path, "/echo/")
 	return &Response{
 		StatusLine: StatusOK,
@@ -337,12 +361,12 @@ func handleEcho(req *Request) *Response {
 }
 
 // handleFiles handles the /files/ endpoint for both GET and POST methods
-func handleFiles(req *Request, directory string) *Response {
+func (s *Server) handleFiles(req *Request) *Response {
 	response := &Response{
 		StatusLine: StatusOK,
 		Headers:    make(map[string]string),
 	}
-	if directory == "" {
+	if s.Directory == "" {
 		response.StatusLine = StatusBadRequest
 		fmt.Println("Directory not specified for /files endpoint")
 		return response
@@ -362,12 +386,12 @@ func handleFiles(req *Request, directory string) *Response {
 		return response
 	}
 
-	fullPath := filepath.Join(directory, filePath)
+	fullPath := filepath.Join(s.Directory, filePath)
 
 	if req.Method == "POST" {
-		return handleFileUpload(req, fullPath)
+		return s.handleFileUpload(req, fullPath)
 	} else if req.Method == "GET" {
-		return handleFileDownload(req, fullPath)
+		return s.handleFileDownload(req, fullPath)
 	} else {
 		response.StatusLine = StatusMethodNotAllowed
 		return response
@@ -375,7 +399,7 @@ func handleFiles(req *Request, directory string) *Response {
 }
 
 // handleFileUpload handles uploading a file (POST to /files/)
-func handleFileUpload(req *Request, fullPath string) *Response {
+func (s *Server) handleFileUpload(req *Request, fullPath string) *Response {
 	response := &Response{
 		StatusLine: StatusOK,
 		Headers:    make(map[string]string),
@@ -417,9 +441,7 @@ func handleFileUpload(req *Request, fullPath string) *Response {
 }
 
 // handleFileDownload handles downloading a file (GET from /files/)
-//
-//goland:noinspection GoUnusedParameter
-func handleFileDownload(req *Request, fullPath string) *Response {
+func (s *Server) handleFileDownload(req *Request, fullPath string) *Response {
 	response := &Response{
 		StatusLine: StatusOK,
 		Headers:    make(map[string]string),
