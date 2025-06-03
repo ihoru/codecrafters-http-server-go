@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"net"
@@ -122,14 +124,14 @@ func methodValidationMiddleware(next Handler) Handler {
 	})
 }
 
-// compressionMiddleware adds Content-Encoding: gzip header if client supports it
+// compressionMiddleware adds Content-Encoding: gzip header and compresses the response body if client supports it
 func compressionMiddleware(next Handler) Handler {
 	return HandlerFunc(func(req *Request) *Response {
 		response := next.Handle(req)
 
 		// Check if client supports gzip compression
 		acceptEncoding, ok := req.Headers["accept-encoding"]
-		if ok {
+		if ok && response.Body != "" {
 			// Split by comma and check each encoding
 			encodings := strings.Split(acceptEncoding, ",")
 			for _, encoding := range encodings {
@@ -139,7 +141,25 @@ func compressionMiddleware(next Handler) Handler {
 					if response.Headers == nil {
 						response.Headers = make(map[string]string)
 					}
+
+					// Compress the response body using gzip
+					var compressedBody bytes.Buffer
+					gz := gzip.NewWriter(&compressedBody)
+					if _, err := gz.Write([]byte(response.Body)); err != nil {
+						fmt.Println("Error compressing response body:", err)
+						return response
+					}
+					if err := gz.Close(); err != nil {
+						fmt.Println("Error closing gzip writer:", err)
+						return response
+					}
+
+					// Update the response with compressed body
+					response.Body = string(compressedBody.Bytes())
 					response.Headers["Content-Encoding"] = "gzip"
+
+					// Update Content-Length header
+					response.Headers["Content-Length"] = strconv.Itoa(len(response.Body))
 					break
 				}
 			}
