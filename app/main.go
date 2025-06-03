@@ -128,11 +128,21 @@ func compressionMiddleware(next Handler) Handler {
 		response := next.Handle(req)
 
 		// Check if client supports gzip compression
-		if strings.ToLower(req.Headers["accept-encoding"]) == "gzip" {
-			if response.Headers == nil {
-				response.Headers = make(map[string]string)
+		acceptEncoding, ok := req.Headers["accept-encoding"]
+		if ok {
+			// Split by comma and check each encoding
+			encodings := strings.Split(acceptEncoding, ",")
+			for _, encoding := range encodings {
+				// Trim whitespace and convert to lowercase
+				encoding = strings.TrimSpace(strings.ToLower(encoding))
+				if encoding == "gzip" {
+					if response.Headers == nil {
+						response.Headers = make(map[string]string)
+					}
+					response.Headers["Content-Encoding"] = "gzip"
+					break
+				}
 			}
-			response.Headers["Content-Encoding"] = "gzip"
 		}
 
 		return response
