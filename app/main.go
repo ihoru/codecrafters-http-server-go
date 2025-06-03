@@ -39,6 +39,32 @@ type Response struct {
 	Body       string
 }
 
+// Handler is an interface for handling HTTP requests
+type Handler interface {
+	Handle(req *Request) *Response
+}
+
+// HandlerFunc is a function type that implements the Handler interface
+type HandlerFunc func(req *Request) *Response
+
+// Handle calls the handler function
+func (f HandlerFunc) Handle(req *Request) *Response {
+	return f(req)
+}
+
+// Middleware wraps a handler with additional functionality
+type Middleware func(Handler) Handler
+
+// Chain combines multiple middleware into a single middleware
+func Chain(middlewares ...Middleware) Middleware {
+	return func(handler Handler) Handler {
+		for i := len(middlewares) - 1; i >= 0; i-- {
+			handler = middlewares[i](handler)
+		}
+		return handler
+	}
+}
+
 func main() {
 	directory := parseArgs()
 
@@ -46,6 +72,9 @@ func main() {
 	if directory != "" {
 		fmt.Println("Directory:", directory)
 	}
+
+	// Create middleware chain
+	handler := createMiddlewareChain(directory)
 
 	listener, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
@@ -61,8 +90,104 @@ func main() {
 			continue
 		}
 
-		go handleConnection(conn, directory)
+		go handleConnection(conn, handler)
 	}
+}
+
+// httpVersionMiddleware checks that the HTTP version is HTTP/1.1
+func httpVersionMiddleware(next Handler) Handler {
+	return HandlerFunc(func(req *Request) *Response {
+		if req.HTTPVersion != "HTTP/1.1" {
+			return &Response{
+				StatusLine: StatusUpgradeRequired,
+				Headers: map[string]string{
+					"Upgrade": "HTTP/1.1",
+				},
+			}
+		}
+		return next.Handle(req)
+	})
+}
+
+// methodValidationMiddleware validates that the HTTP method is GET or POST
+func methodValidationMiddleware(next Handler) Handler {
+	return HandlerFunc(func(req *Request) *Response {
+		if req.Method != "GET" && req.Method != "POST" {
+			return &Response{
+				StatusLine: StatusMethodNotAllowed,
+				Headers:    make(map[string]string),
+			}
+		}
+		return next.Handle(req)
+	})
+}
+
+// compressionMiddleware adds Content-Encoding: gzip header if client supports it
+func compressionMiddleware(next Handler) Handler {
+	return HandlerFunc(func(req *Request) *Response {
+		response := next.Handle(req)
+
+		// Check if client supports gzip compression
+		if strings.ToLower(req.Headers["accept-encoding"]) == "gzip" {
+			if response.Headers == nil {
+				response.Headers = make(map[string]string)
+			}
+			response.Headers["Content-Encoding"] = "gzip"
+		}
+
+		return response
+	})
+}
+
+// routingMiddleware routes requests to appropriate handlers
+func routingMiddleware(directory string) Middleware {
+	return func(next Handler) Handler {
+		return HandlerFunc(func(req *Request) *Response {
+			// Route to appropriate handler
+			switch {
+			case req.Method == "GET" && req.Path == "/":
+				// Root path, just return 200 OK
+				return &Response{
+					StatusLine: StatusOK,
+					Headers:    make(map[string]string),
+				}
+
+			case req.Method == "GET" && req.Path == "/user-agent":
+				return handleUserAgent(req)
+
+			case req.Method == "GET" && strings.HasPrefix(req.Path, "/echo/"):
+				return handleEcho(req)
+
+			case strings.HasPrefix(req.Path, "/files/"):
+				return handleFiles(req, directory)
+
+			default:
+				return next.Handle(req)
+			}
+		})
+	}
+}
+
+// createMiddlewareChain creates the middleware chain for request handling
+func createMiddlewareChain(directory string) Handler {
+	// Create base handler that returns 404 Not Found
+	notFoundHandler := HandlerFunc(func(req *Request) *Response {
+		return &Response{
+			StatusLine: StatusNotFound,
+			Headers:    make(map[string]string),
+		}
+	})
+
+	// Build middleware chain
+	middlewareChain := Chain(
+		httpVersionMiddleware,
+		methodValidationMiddleware,
+		compressionMiddleware,
+		routingMiddleware(directory),
+	)
+
+	// Apply middleware chain to base handler
+	return middlewareChain(notFoundHandler)
 }
 
 // parseArgs parses command line arguments and returns the directory if specified
@@ -81,7 +206,7 @@ func parseArgs() string {
 }
 
 // handleConnection handles a client connection
-func handleConnection(conn net.Conn, directory string) {
+func handleConnection(conn net.Conn, handler Handler) {
 	defer conn.Close()
 
 	fmt.Println("Accepted connection from:", conn.RemoteAddr())
@@ -94,7 +219,7 @@ func handleConnection(conn net.Conn, directory string) {
 
 	fmt.Println("Request:", request.Method, request.Path, request.HTTPVersion)
 
-	response := handleRequest(request, directory)
+	response := handler.Handle(request)
 
 	err = sendResponse(conn, response)
 	if err != nil {
@@ -162,66 +287,23 @@ func parseRequest(conn net.Conn) (*Request, error) {
 	}, nil
 }
 
-// handleRequest processes the request and returns a response
-func handleRequest(req *Request, directory string) *Response {
-	response := &Response{
-		StatusLine: StatusOK,
-		Headers:    make(map[string]string),
-	}
-
-	// Check HTTP version
-	if req.HTTPVersion != "HTTP/1.1" {
-		response.StatusLine = StatusUpgradeRequired
-		response.Headers["Upgrade"] = "HTTP/1.1"
-		return response
-	}
-
-	// Check method
-	if req.Method != "GET" && req.Method != "POST" {
-		response.StatusLine = StatusMethodNotAllowed
-		return response
-	}
-
-	// Route to appropriate handler
-	switch {
-	case req.Method == "GET" && req.Path == "/":
-		// Root path, just return 200 OK
-		return response
-
-	case req.Method == "GET" && req.Path == "/user-agent":
-		return handleUserAgent(req)
-
-	case req.Method == "GET" && strings.HasPrefix(req.Path, "/echo/"):
-		return handleEcho(req)
-
-	case strings.HasPrefix(req.Path, "/files/"):
-		return handleFiles(req, directory)
-
-	default:
-		response.StatusLine = StatusNotFound
-		return response
-	}
-}
-
 // handleUserAgent handles the /user-agent endpoint
 func handleUserAgent(req *Request) *Response {
-	response := &Response{
+	return &Response{
 		StatusLine: StatusOK,
 		Headers:    make(map[string]string),
 		Body:       req.Headers["user-agent"],
 	}
-	return response
 }
 
 // handleEcho handles the /echo/ endpoint
 func handleEcho(req *Request) *Response {
 	content := strings.TrimPrefix(req.Path, "/echo/")
-	response := &Response{
+	return &Response{
 		StatusLine: StatusOK,
 		Headers:    make(map[string]string),
 		Body:       content,
 	}
-	return response
 }
 
 // handleFiles handles the /files/ endpoint for both GET and POST methods
@@ -255,7 +337,7 @@ func handleFiles(req *Request, directory string) *Response {
 	if req.Method == "POST" {
 		return handleFileUpload(req, fullPath)
 	} else if req.Method == "GET" {
-		return handleFileDownload(fullPath)
+		return handleFileDownload(req, fullPath)
 	} else {
 		response.StatusLine = StatusMethodNotAllowed
 		return response
@@ -305,7 +387,9 @@ func handleFileUpload(req *Request, fullPath string) *Response {
 }
 
 // handleFileDownload handles downloading a file (GET from /files/)
-func handleFileDownload(fullPath string) *Response {
+//
+//goland:noinspection GoUnusedParameter
+func handleFileDownload(req *Request, fullPath string) *Response {
 	response := &Response{
 		StatusLine: StatusOK,
 		Headers:    make(map[string]string),
