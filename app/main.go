@@ -272,7 +272,11 @@ func (s *Server) handleConnection(conn net.Conn) {
 	// Process requests in a loop to handle persistent connections
 	for {
 		// Set a deadline for reading the next request (optional)
-		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		err := conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if err != nil {
+			fmt.Println("Error setting read deadline:", err)
+			return
+		}
 
 		// Parse the request using the buffered reader
 		request, err := parseRequestWithReader(reader)
