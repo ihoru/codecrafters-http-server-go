@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // HTTP status codes
@@ -265,28 +266,58 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 	fmt.Println("Accepted connection from:", conn.RemoteAddr())
 
-	request, err := parseRequest(conn)
-	if err != nil {
-		fmt.Println("Error parsing request:", err)
-		return
+	// Create a reader once for the connection
+	reader := bufio.NewReader(conn)
+
+	// Process requests in a loop to handle persistent connections
+	for {
+		// Set a deadline for reading the next request (optional)
+		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+
+		// Parse the request using the buffered reader
+		request, err := parseRequestWithReader(reader)
+		if err != nil {
+			if err != io.EOF {
+				fmt.Println("Error parsing request:", err)
+			}
+			return
+		}
+
+		fmt.Println("Request:", request.Method, request.Path, request.HTTPVersion)
+
+		// Check if the client wants to close the connection
+		connectionClose := false
+		if connHeader, ok := request.Headers["connection"]; ok && strings.ToLower(connHeader) == "close" {
+			connectionClose = true
+		}
+
+		response := s.Handler.Handle(request)
+
+		// If the client requested to close the connection, add the header
+		if connectionClose {
+			if response.Headers == nil {
+				response.Headers = make(map[string]string)
+			}
+			response.Headers["Connection"] = "close"
+		}
+
+		err = sendResponse(conn, response)
+		if err != nil {
+			fmt.Println("Error sending response:", err)
+			return
+		}
+
+		fmt.Println("Response:", response.StatusLine)
+
+		// If the client requested to close the connection, break the loop
+		if connectionClose {
+			return
+		}
 	}
-
-	fmt.Println("Request:", request.Method, request.Path, request.HTTPVersion)
-
-	response := s.Handler.Handle(request)
-
-	err = sendResponse(conn, response)
-	if err != nil {
-		fmt.Println("Error sending response:", err)
-		return
-	}
-
-	fmt.Println("Response:", response.StatusLine)
 }
 
-// parseRequest parses an HTTP request from a connection
-func parseRequest(conn net.Conn) (*Request, error) {
-	reader := bufio.NewReader(conn)
+// parseRequestWithReader parses an HTTP request from a bufio.Reader
+func parseRequestWithReader(reader *bufio.Reader) (*Request, error) {
 	requestHeaders := make(map[string]string)
 	var requestTarget string
 	var requestBody []byte
